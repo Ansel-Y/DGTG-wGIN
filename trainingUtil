@@ -1,0 +1,116 @@
+import numpy as np
+import torch.nn as nn
+import torch.optim as optim
+import torch
+from tqdm import tqdm
+
+def trainModel(model,device,Epoch,trainLoader,testLoader,validLoader,optimizer,testDuringTrain=True):
+    trainEpochLoss = []
+    trainEpochAcc  = []
+    testEpochLoss = []
+    testEpochAcc = []
+    validEpochLoss = []
+    validEpochAcc  = []
+
+    for e in tqdm(range(1, 1+Epoch), desc='Training',dynamic_ncols=True):
+       
+        lossList = []
+        predictList = []
+        labelList = []
+        model.train()
+        for data, label in trainLoader:
+            batchSize = data.shape[0]
+            labelList.append(label)
+            data = data.to(device=device)
+            label = label.to(device=device)
+            predict = model(data)
+
+            loss = nn.CrossEntropyLoss()(predict, label.view(-1))
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            lossList.append(loss.detach().to(device='cpu').view(1, -1) * batchSize)
+
+            predictList.append(predict.detach().to(device='cpu'))
+        
+        losstotal = torch.concatenate(lossList, dim=0)
+        epochLoss = (torch.sum(losstotal) / len(trainLoader.dataset)).item()
+        trainEpochLoss.append(epochLoss)
+        
+        predictResult = torch.concatenate(predictList, dim=0)
+        labelResult = torch.concatenate(labelList, dim=0)
+        _, maxIndex = torch.max(predictResult, dim=1)
+        accuracy = torch.mean(torch.eq(maxIndex.view(-1), labelResult.view(-1)).float())
+        trainEpochAcc.append(accuracy.item()) 
+        tqdm.write('Epoch:{},loss:{},accuracy:{}'.format(e, epochLoss, accuracy))
+
+        
+        if testDuringTrain:
+            model.eval()
+            predictList = []
+            labelList = []
+            lossList = []
+            for data, label in testLoader:
+                batchSize = data.shape[0]
+                labelList.append(label)
+                data = data.to(device=device)
+                label = label.to(device=device)
+                predict = model(data)
+                loss = nn.CrossEntropyLoss()(predict, label.view(-1))
+
+                predictList.append(predict.detach().to(device='cpu'))
+
+                lossList.append(loss.detach().to(device='cpu').view(1, -1) * batchSize)
+
+            
+            losstotal = torch.concatenate(lossList, dim=0)
+            epochLoss = (torch.sum(losstotal) / len(testLoader.dataset)).item()
+            testEpochLoss.append(epochLoss)
+            
+            predictResult = torch.concatenate(predictList, dim=0)
+            labelResult = torch.concatenate(labelList, dim=0)
+            _, maxIndex = torch.max(predictResult, dim=1)
+            accuracy = torch.mean(torch.eq(maxIndex.view(-1), labelResult.view(-1)).float())
+            testEpochAcc.append(accuracy.item())
+            tqdm.write('Epoch:{},test-accuracy:{}'.format(e, accuracy))
+
+           
+            predictList = []
+            labelList = []
+            lossList = []
+            for data, label in validLoader:
+                batchSize = data.shape[0]
+                labelList.append(label)
+                data = data.to(device=device)
+                label = label.to(device=device)
+                predict = model(data)
+                loss = nn.CrossEntropyLoss()(predict, label.view(-1))
+
+                predictList.append(predict.detach().to(device='cpu'))
+
+                lossList.append(loss.detach().to(device='cpu').view(1, -1) * batchSize)
+
+            
+            losstotal = torch.concatenate(lossList, dim=0)
+            epochLoss = (torch.sum(losstotal) / len(testLoader.dataset)).item()
+            validEpochLoss.append(epochLoss)
+            
+            predictResult = torch.concatenate(predictList, dim=0)
+            labelResult = torch.concatenate(labelList, dim=0)
+            _, maxIndex = torch.max(predictResult, dim=1)
+            accuracy = torch.mean(torch.eq(maxIndex.view(-1), labelResult.view(-1)).float())
+            validEpochAcc.append(accuracy.item())
+            tqdm.write('Epoch:{},valid-accuracy:{}'.format(e, accuracy))
+
+
+
+    
+    trainEpochLoss = np.array(trainEpochLoss).reshape(-1,1)
+    trainEpochAcc  = np.array(trainEpochAcc).reshape(-1,1)
+    testEpochLoss  = np.array(testEpochLoss).reshape(-1,1)
+    testEpochAcc   = np.array(testEpochAcc).reshape(-1,1)
+    validEpochLoss = np.array(validEpochLoss).reshape(-1,1)
+    validEpochAcc  = np.array(validEpochAcc).reshape(-1,1)
+    return np.concatenate([trainEpochLoss,trainEpochAcc,testEpochLoss,testEpochAcc,validEpochLoss,validEpochAcc],axis=1)
